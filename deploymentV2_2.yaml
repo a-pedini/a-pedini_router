@@ -1,0 +1,143 @@
+# Source: router/templates/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: "test-apollo-router-v2"
+  namespace: apollo-router-test
+data:
+  managedFederationApiKey: "c2VydmljZTpGZWRlcmF0aW9uVjJUZXN0OnpnYWtldmFrSEt1RU9sNnJDMS1CSWc="
+---
+# Source: router/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-apollo-router-v2
+  namespace: apollo-router-test
+  labels:
+    app.kubernetes.io/name: router
+    app.kubernetes.io/instance: test-apollo-v2
+    app.kubernetes.io/version: "v1.6.0"
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: 8088
+      targetPort: health
+      protocol: TCP
+      name: health
+  selector:
+    app.kubernetes.io/name: router
+    app.kubernetes.io/instance: test-apollo-v2
+---
+# Source: router/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-apollo-router-v2
+  namespace: apollo-router-test
+  labels:
+    app.kubernetes.io/name: router
+    app.kubernetes.io/instance: test-apollo-v2
+    app.kubernetes.io/version: "v1.6.0"
+
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "9090"
+    prometheus.io/scrape: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: router
+      app.kubernetes.io/instance: test-apollo-v2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: router
+        app.kubernetes.io/instance: test-apollo-v2
+    spec:
+      securityContext:
+        {}
+      containers:
+        - name: router
+          securityContext:
+            {}
+          image: "ghcr.io/apollographql/router:v1.6.0"
+          imagePullPolicy: IfNotPresent
+          args:
+            - --hot-reload
+            - --config
+            - /app/router.yaml
+          env:
+            - name: APOLLO_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: "test-apollo-router-v2"
+                  key: managedFederationApiKey
+                  optional: true
+            - name: APOLLO_GRAPH_REF
+              value: "FederationV2Test@currentv2"
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            - name: health
+              containerPort: 8088
+              protocol: TCP
+
+          livenessProbe:
+            httpGet:
+              path: "/health"
+              port: 8088
+          readinessProbe:
+            httpGet:
+              path: "/health"
+              port: 8088
+          resources:
+            {}
+          volumeMounts:
+            - name: router-configuration
+              mountPath: /app/
+              readOnly: true
+            - name: router-script
+              mountPath: /dist/rhai
+              readOnly: true
+      volumes:
+        - name: router-configuration
+          configMap:
+            name: test-apollo-router-config
+        - name: router-script
+          configMap:
+            name: test-apollo-router-script
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  namespace: apollo-router-test
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/affinity: cookie
+    nginx.ingress.kubernetes.io/rewrite-target: /$1$2
+    nginx.ingress.kubernetes.io/session-cookie-conditional-samesite-none: "true"
+    nginx.ingress.kubernetes.io/session-cookie-name: route
+    nginx.ingress.kubernetes.io/session-cookie-path: /
+    nginx.ingress.kubernetes.io/session-cookie-samesite: none
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  name: test-apollo-router-ingress-v2
+spec:
+  rules:
+    - host: atts.music.unext.dev
+      http:
+        paths:
+          - backend:
+              serviceName: test-apollo-router-v2
+              servicePort: 80
+            path: /apollo-test-v2
+            pathType: ImplementationSpecific
+  tls:
+    - hosts:
+        - atts.music.unext.dev
+      secretName: unext-dev

@@ -1,8 +1,19 @@
+health-check:
+  listen: 0.0.0.0:8088
 supergraph:
-  listen: 127.0.0.1:4005
+  listen: 0.0.0.0:80
   introspection: true
 include_subgraph_errors:
   all: true
+telemetry:
+  metrics:
+    common:
+      resources:
+        service.name: test-apollo-router-v2
+    prometheus:
+      enabled: true
+      listen: 0.0.0.0:9090
+      path: /metrics
 cors:
   # Set to true to allow any origin
   # (Defaults to false)
